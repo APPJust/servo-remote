@@ -11,13 +11,17 @@
 | `app.js` | 所有功能：輸出引擎、三種連線方式、13 種控制模式 |
 | `firmware/ServoMQTT/ServoMQTT.ino` | 「MQTT Broker」模式用的開發板程式（ESP8266／ESP32） |
 
-## 三種連線方式
+## 連線方式（Webduino 與 MQTT 可以同時開啟）
 
 | 方式 | 開發板需要 | 訊息路徑 |
 |---|---|---|
-| **Webduino 雲端** | Webduino Smart 原廠韌體＋Device ID（和 Blockly 相同） | 手機 → `wss://ws.webduino.io`（Webduino 的 MQTT Broker）→ 開發板 |
+| **Webduino 雲端** | Webduino Smart 原廠韌體＋Device ID（預設 `YdrMW`，和 Blockly 相同） | 手機 → `wss://ws.webduino.io`（Webduino 的 MQTT Broker）→ 開發板 |
 | **MQTT Broker** | 燒錄 `firmware/ServoMQTT`，改 Wi-Fi 與 Topic | 手機 publish `Topic` → Broker → 開發板 subscribe |
-| **模擬** | 不需要 | 畫面上的 SG90 依真實轉速（約 0.1 秒／60°）模擬 |
+| **模擬** | 不需要（兩種都沒開時自動使用） | 畫面上的 SG90 依真實轉速（約 0.1 秒／60°）模擬 |
+
+連線面板裡 Webduino 和 MQTT 各有自己的「連線」按鈕，兩個都開啟時，每個角度會同時送到 Webduino 開發板和 MQTT Topic（例如一塊板子用 Device ID、另一塊用 MQTT，兩個伺服馬達一起轉）。
+
+分享網址格式：`?conn=webduino,mqtt&device=YdrMW&pin=5&broker=wss://mqtt1.webduino.io/mqtt&topic=30-06`（`conn` 可以只寫其中一個，或寫 `sim`）。
 
 MQTT 模式的 Topic 設計（可當上課範例）：
 

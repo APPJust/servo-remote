@@ -161,18 +161,22 @@
     if (opt.source) E.source = opt.source;
   }
 
+  // 每個已連線的輸出各自限速、各自記住上次送出的角度
   function sendIfNeeded(t) {
-    if (E.locked || Conn.state !== 'online' || !Conn.driver) return;
-    const v = Math.round(E.out);
-    if (v === E.lastSent) return;
-    if (t - E.lastSendAt < 1000 / cfg.rate) return;
-    const p = cfg.invert ? 180 - v : v;
-    let ok = false;
-    try { ok = Conn.driver.send(p) !== false; } catch (e) { log('err', '送出失敗', e.message); }
-    if (!ok) return;
-    E.lastSent = v; E.lastSendAt = t; E.sent++; E.sendTimes.push(t);
-    const d = Conn.driver.describe(p);
-    log('out', d[0], d[1]);
+    if (E.locked) return;
+    const v = Math.round(E.out), p = cfg.invert ? 180 - v : v;
+    let any = false;
+    for (const o of OUT_LIST) {
+      if (o.state !== 'online' || !o.driver || v === o.lastSent || t - o.lastSendAt < 1000 / cfg.rate) continue;
+      let ok = false;
+      try { ok = o.driver.send(p) !== false; } catch (e) { log('err', o.label + ' 送出失敗', e.message); }
+      if (!ok) continue;
+      o.lastSent = v; o.lastSendAt = t; E.sent++; E.sendTimes.push(t); any = true;
+      const d = o.driver.describe(p);
+      log('out', d[0], d[1]);
+    }
+    if (!any) return;
+    E.lastSent = v;
     const atLim = v <= cfg.min || v >= cfg.max;
     if (atLim && !E.atLimit) haptic(18);
     E.atLimit = atLim;
@@ -249,44 +253,43 @@
   const RecordModeHook = {};
 
   /* ═════════════════════ 5. 連線驅動 ═════════════════════ */
-  const Conn = {
-    kind: 'sim', state: 'offline', msg: '', driver: null, board: null,
-    set(state, msg) {
-      this.state = state; this.msg = msg || '';
-      if (state === 'online') E.lastSent = null; // 連上後重送目前角度
-      renderStatus(); syncConnSheet();
-    },
-    setBoard(v) { this.board = v; renderStatus(); }
-  };
-
-  function SimDriver() {
+  // 兩個輸出可以同時開啟：每個角度會同時送到 Webduino 開發板與 MQTT Topic。
+  // 兩個都沒開時就是「模擬模式」，畫面上的 SG90 自己模擬轉動。
+  function makeOut(kind, label) {
     return {
-      kind: 'sim', short: '模擬模式',
-      connect() { return Promise.resolve(); },
-      send() { return true; },
-      describe(a) { return ['模擬 servo.write(' + a + ')', '']; },
-      disconnect() { }
+      kind, label, state: 'offline', msg: '', driver: null, board: null, lastSent: null, lastSendAt: 0, formErr: '',
+      set(state, msg) {
+        this.state = state; this.msg = msg || '';
+        if (state === 'online') this.lastSent = null; // 連上後重送目前角度
+        renderStatus(); syncConnSheet();
+      },
+      setBoard(v) { this.board = v; renderStatus(); }
     };
   }
+  const Outs = { webduino: makeOut('webduino', 'Webduino'), mqtt: makeOut('mqtt', 'MQTT') };
+  const OUT_LIST = [Outs.webduino, Outs.mqtt];
+  const onlineOuts = () => OUT_LIST.filter(o => o.state === 'online');
+  const activeOuts = () => OUT_LIST.filter(o => o.state !== 'offline');
+  const resendAll = () => OUT_LIST.forEach(o => { o.lastSent = null; });
 
-  function WebduinoDriver(opts) {
+  function WebduinoDriver(opts, out) {
     let board = null, servo = null, closed = false, retryTimer = 0, slowTimer = 0;
     function open() {
       if (closed) return;
-      Conn.set('connecting', '連線到 Webduino 雲端（' + opts.device + '）…');
+      out.set('connecting', '連線到 Webduino 雲端（' + opts.device + '）…');
       log('sys', 'CONNECT wss://ws.webduino.io', 'Device ID ' + opts.device);
       let b;
       try {
         b = board = new window.webduino.board.Smart({ device: opts.device, transport: 'mqtt', multi: true });
       } catch (e) { fail(e.message); return; }
       clearTimeout(slowTimer);
-      slowTimer = setTimeout(() => { if (b === board && !servo && !closed) Conn.set('connecting', '等待開發板回應…請確認板子已通電並連上 Wi-Fi'); }, 9000);
+      slowTimer = setTimeout(() => { if (b === board && !servo && !closed) out.set('connecting', '等待開發板回應…請確認板子已通電並連上 Wi-Fi'); }, 9000);
       b.once(window.webduino.BoardEvent.READY, () => {
         if (b !== board || closed) return;
         clearTimeout(slowTimer);
         try { servo = new window.webduino.module.Servo(b, b.getDigitalPin(opts.pin)); } catch (e) { fail('建立伺服馬達失敗：' + e.message); return; }
-        Conn.board = true;
-        Conn.set('online');
+        out.board = true;
+        out.set('online');
         log('in', '開發板就緒 READY', 'Servo 接在腳位 ' + opts.pin);
         toast('已連上開發板 ' + opts.device, 'ok');
       });
@@ -303,18 +306,18 @@
     }
     function fail(msg) {
       if (closed) return;
-      const old = board; board = null; servo = null; Conn.board = false;
+      const old = board; board = null; servo = null; out.board = false;
       clearTimeout(slowTimer);
       if (old) { try { old.disconnect(); } catch (e) { /* ignore */ } }
       if (opts.autoReconnect) {
-        Conn.set('connecting', msg + '，5 秒後重新連線…');
+        out.set('connecting', msg + '，5 秒後重新連線…');
         clearTimeout(retryTimer); retryTimer = setTimeout(open, 5000);
-      } else Conn.set('error', msg + '。請確認 Device ID 與開發板電源。');
+      } else out.set('error', msg + '。請確認 Device ID 與開發板電源。');
     }
     return {
       kind: 'webduino', short: 'Webduino · ' + opts.device,
       async connect() {
-        Conn.set('connecting', '載入 Webduino 函式庫…');
+        out.set('connecting', '載入 Webduino 函式庫…');
         await loadScript(WEBDUINO_JS);
         if (!window.webduino || !window.webduino.board || !window.webduino.board.Smart) throw new Error('Webduino 函式庫載入不完整');
         open();
@@ -329,7 +332,7 @@
     };
   }
 
-  function MqttDriver(opts) {
+  function MqttDriver(opts, out) {
     let client = null, closed = false, everConnected = false;
     const base = opts.topic.replace(/\/+$/, '');
     const clientId = 'servo-web-' + randId(8);
@@ -337,19 +340,20 @@
     return {
       kind: 'mqtt', short: 'MQTT · ' + host,
       async connect() {
-        Conn.set('connecting', '載入 MQTT.js…');
+        out.set('connecting', '載入 MQTT.js…');
         await loadScript(MQTT_JS);
         if (!window.mqtt || !window.mqtt.connect) throw new Error('MQTT.js 載入不完整');
         if (closed) return;
-        Conn.set('connecting', '連線到 ' + opts.broker + ' …');
+        out.set('connecting', '連線到 ' + opts.broker + ' …');
         log('sys', 'CONNECT ' + opts.broker, 'clientId ' + clientId);
         client = window.mqtt.connect(opts.broker, {
           clientId, clean: true, keepalive: 30, connectTimeout: 10000, reconnectPeriod: 3000, protocolVersion: 4,
           username: opts.user || undefined, password: opts.pass || undefined
         });
         client.on('connect', () => {
+          if (!everConnected) toast('已連上 MQTT Broker（' + host + '）', 'ok');
           everConnected = true;
-          Conn.set('online');
+          out.set('online');
           log('in', 'CONNACK 已連上 Broker');
           const subs = [base + '/state', base + '/online'];
           client.subscribe(subs, { qos: 0 }, err => {
@@ -357,14 +361,14 @@
             else log('sys', 'SUBSCRIBE ' + subs.join('、'));
           });
         });
-        client.on('reconnect', () => { if (!closed) Conn.set('connecting', everConnected ? '重新連線中…' : '連線中…（若一直連不上，請檢查 Broker 網址）'); });
-        client.on('offline', () => { if (!closed) Conn.set('connecting', '網路中斷，等待重新連線…'); });
-        client.on('error', e => { if (closed) return; log('err', 'MQTT 錯誤', e && e.message); if (!everConnected) Conn.set('connecting', 'Broker 拒絕連線：' + (e && e.message)); });
+        client.on('reconnect', () => { if (!closed) out.set('connecting', everConnected ? '重新連線中…' : '連線中…（若一直連不上，請檢查 Broker 網址）'); });
+        client.on('offline', () => { if (!closed) out.set('connecting', '網路中斷，等待重新連線…'); });
+        client.on('error', e => { if (closed) return; log('err', 'MQTT 錯誤', e && e.message); if (!everConnected) out.set('connecting', 'Broker 拒絕連線：' + (e && e.message)); });
         client.on('message', (topic, payload) => {
           const s = payload.toString().trim();
           if (topic === base + '/online') {
             const on = s === '1' || /^(on|online|true)$/i.test(s);
-            Conn.setBoard(on);
+            out.setBoard(on);
             log('in', topic, s + (on ? '（開發板在線）' : '（開發板離線）'));
           } else if (topic === base + '/state') {
             const v = parseFloat(s);
@@ -383,21 +387,24 @@
     };
   }
 
-  async function connect(kind, opts) {
-    disconnect(true);
-    const drv = kind === 'webduino' ? WebduinoDriver(opts) : kind === 'mqtt' ? MqttDriver(opts) : SimDriver();
-    Conn.driver = drv; Conn.kind = kind; Conn.board = null; E.reported = null;
+  async function connectOut(kind, opts) {
+    const out = Outs[kind];
+    disconnectOut(kind, true);
+    const drv = kind === 'webduino' ? WebduinoDriver(opts, out) : MqttDriver(opts, out);
+    out.driver = drv; out.board = null; out.formErr = '';
+    if (kind === 'mqtt') E.reported = null;
     try {
       await drv.connect();
-      if (kind === 'sim' && Conn.driver === drv) { Conn.set('online'); log('sys', '模擬模式：不接開發板，只在畫面上模擬'); }
     } catch (e) {
-      if (Conn.driver === drv) { Conn.set('error', e.message); log('err', e.message); toast(e.message, 'err'); }
+      if (out.driver === drv) { out.set('error', e.message); log('err', e.message); toast(e.message, 'err'); }
     }
   }
-  function disconnect(silent) {
-    if (Conn.driver) { try { Conn.driver.disconnect(); } catch (e) { /* ignore */ } if (!silent) log('sys', '已中斷連線'); }
-    Conn.driver = null; Conn.board = null; E.reported = null;
-    Conn.set('offline');
+  function disconnectOut(kind, silent) {
+    const out = Outs[kind];
+    if (out.driver) { try { out.driver.disconnect(); } catch (e) { /* ignore */ } if (!silent) log('sys', out.label + ' 已中斷連線'); }
+    out.driver = null; out.board = null;
+    if (kind === 'mqtt') E.reported = null;
+    out.set('offline');
   }
 
   /* ═════════════════════ 6. 動作感測器中心 ═════════════════════ */
@@ -1474,24 +1481,43 @@
   /* ═════════════════════ 10. 畫面更新 ═════════════════════ */
   const UI = {};
   function setText(el, v) { if (el._v !== v) { el._v = v; el.textContent = v; } }
+  // 狀態膠囊：沒有任何連線＝模擬模式；有連線時列出每一條（… 連線中、✕ 失敗）
   function renderStatus() {
     const pill = $('#statusBtn'); if (!pill) return;
+    const act = activeOuts(), on = onlineOuts();
     let cls, text;
-    const d = Conn.driver;
-    if (Conn.state === 'connecting') { cls = 'warn pulse'; text = '連線中…'; } else if (Conn.state === 'error') { cls = 'err'; text = '連線失敗'; } else if (Conn.state === 'offline' || !d) { cls = 'off'; text = '未連線'; } else if (Conn.kind === 'sim') { cls = 'sim'; text = '模擬模式'; } else if (Conn.kind === 'mqtt') { cls = Conn.board === false ? 'warn' : 'ok'; text = d.short + (Conn.board === false ? ' · 板子離線' : ''); } else { cls = 'ok'; text = d.short; }
+    if (!act.length) { cls = 'sim'; text = '模擬模式'; } else {
+      text = act.map(o => o.label + (o.state === 'connecting' ? '…' : o.state === 'error' ? ' ✕' : '')).join(' + ');
+      const hasErr = act.some(o => o.state === 'error'), hasWait = act.some(o => o.state === 'connecting');
+      const boardOff = Outs.mqtt.state === 'online' && Outs.mqtt.board === false;
+      cls = hasErr ? (on.length ? 'warn' : 'err') : hasWait ? 'warn pulse' : boardOff ? 'warn' : 'ok';
+    }
     pill.className = 'status ' + cls;
     $('#statusText').textContent = text;
-    const online = Conn.state === 'online' && Conn.kind !== 'sim';
-    $('#qbConn').classList.toggle('on', online);
-    $('#qbConnLabel').textContent = online ? '已連線' : Conn.state === 'connecting' ? '連線中' : '連線';
+    document.body.classList.toggle('multi-conn', act.length > 1); // 手機上兩條連線時，讓出標題的空間
+    $('#qbConn').classList.toggle('on', on.length > 0);
+    $('#qbConnLabel').textContent = on.length === 2 ? '已連線 ×2' : on.length ? '已連線' : act.some(o => o.state === 'connecting') ? '連線中' : '連線';
     renderBoardFlag();
+  }
+  function outFlagText(o) {
+    if (o.state === 'connecting') return [o.label + ' 連線中…', ''];
+    if (o.state === 'error') return [o.label + ' 連線失敗', 'off'];
+    if (o.kind === 'webduino') return ['Webduino 腳位 ' + connForm.webduino.pin, 'on'];
+    const fresh = E.reported != null && now() - E.reportedAt < 2000;
+    if (o.board === false) return ['MQTT 開發板離線', 'off'];
+    if (fresh) return ['MQTT 回報 ' + Math.round(E.reported) + '°', 'on'];
+    if (o.board === true) return ['MQTT 開發板在線', 'on'];
+    return ['MQTT 等待開發板', ''];
   }
   function renderBoardFlag() {
     const f = $('#boardFlag'), s = $('span', f);
+    const act = activeOuts();
     let text, cls = 'flag board';
-    if (Conn.state !== 'online') { text = Conn.state === 'connecting' ? (Conn.msg || '連線中…') : '未連線 · 畫面預覽'; } else if (Conn.kind === 'sim') { text = '模擬 SG90（0.1 秒／60°）'; } else if (Conn.kind === 'webduino') { text = 'Webduino Smart · 腳位 ' + (connForm.webduino.pin); cls += ' on'; } else {
-      const fresh = E.reported != null && now() - E.reportedAt < 2000;
-      if (Conn.board === false) { text = '開發板離線'; cls += ' off'; } else if (fresh) { text = '開發板回報 ' + Math.round(E.reported) + '°'; cls += ' on'; } else if (Conn.board === true) { text = '開發板在線'; cls += ' on'; } else { text = 'Broker 已連線 · 等待開發板'; }
+    if (!act.length) text = '模擬 SG90（0.1 秒／60°）';
+    else {
+      const parts = act.map(outFlagText);
+      text = parts.map(p => p[0]).join(' · ');
+      if (parts.some(p => p[1] === 'off')) cls += ' off'; else if (parts.every(p => p[1] === 'on')) cls += ' on';
     }
     if (f.className !== cls) f.className = cls;
     setText(s, text);
@@ -1553,8 +1579,8 @@
     sendIfNeeded(t);
     Rec.tick(t);
     let goal = E.out;
-    if (Conn.state === 'online' && E.lastSent != null) {
-      goal = E.lastSent;
+    if (onlineOuts().length && E.lastSent != null) {
+      goal = E.locked ? E.lastSent : Math.round(E.out);
       if (E.reported != null && t - E.reportedAt < 2000) goal = cfg.invert ? 180 - E.reported : E.reported;
     }
     const step = SERVO_SPEED * dt;
@@ -1628,14 +1654,15 @@
 
   const DEFAULT_DEVICE = 'YdrMW'; // 預設的 Webduino Device ID
   const DEFAULT_TOPIC = '30-06';  // 預設的 MQTT Topic
-  const defaultForm = () => ({ kind: 'sim', webduino: { device: DEFAULT_DEVICE, pin: 5, autoReconnect: true }, mqtt: { broker: BROKERS[0].url, topic: DEFAULT_TOPIC, qos: 0, retain: false, user: '' } });
+  const defaultForm = () => ({ webduino: { device: DEFAULT_DEVICE, pin: 5, autoReconnect: true }, mqtt: { broker: BROKERS[0].url, topic: DEFAULT_TOPIC, qos: 0, retain: false, user: '' } });
   const connForm = (function () {
     const d = defaultForm(), s = store.get('connForm', null) || {};
-    const f = { kind: s.kind || d.kind, webduino: Object.assign(d.webduino, s.webduino), mqtt: Object.assign(d.mqtt, s.mqtt) };
+    const f = { webduino: Object.assign(d.webduino, s.webduino), mqtt: Object.assign(d.mqtt, s.mqtt) };
     if (!f.webduino.device) f.webduino.device = DEFAULT_DEVICE; // 之前存過空白時也補上預設值
     return f;
   })();
-  let mqPass = '', connWaiting = false, uiKind = connForm.kind;
+  const saveForm = () => store.set('connForm', connForm);
+  let mqPass = '', shareSel = null;
 
   function readForm() {
     connForm.webduino.device = $('#wdDevice').value.trim();
@@ -1656,13 +1683,18 @@
     $('#mqUser').value = connForm.mqtt.user;
     $('#mqRetain').checked = connForm.mqtt.retain;
     UI.qos.set(connForm.mqtt.qos);
-    showKind(uiKind);
     updateTopicTable(); updateBrokerChips();
   }
-  function showKind(k) {
-    uiKind = k;
-    $$('#connSheet .kind').forEach(b => b.setAttribute('aria-checked', String(b.dataset.kind === k)));
-    $$('#connSheet .kind-pane').forEach(p => { p.hidden = p.dataset.pane !== k; });
+  const cardOf = kind => $('#connSheet .conn-card[data-kind="' + kind + '"]');
+  function setCollapsed(kind, v) {
+    const c = cardOf(kind); if (!c) return;
+    c.classList.toggle('collapsed', v);
+    $('.conn-card-head', c).setAttribute('aria-expanded', String(!v));
+  }
+  function openConnSheet() {
+    // 已連線的卡片收合，其餘展開
+    OUT_LIST.forEach(o => setCollapsed(o.kind, o.state === 'online'));
+    openSheet('#connSheet');
     syncConnSheet();
   }
   function updateTopicTable() { const base = $('#mqTopic').value.trim().replace(/\/+$/, '') || '（Topic）'; $$('#connSheet [data-topic]').forEach(c => { c.textContent = base + c.dataset.topic; }); }
@@ -1682,63 +1714,86 @@
     }
     return '';
   }
-  function setConnMsg(kind, text) {
-    const m = $('#connMsg');
-    if (!text) { m.hidden = true; m.innerHTML = ''; return; }
+  function setCardMsg(card, kind, text) {
+    const m = $('.conn-msg', card);
+    if (!text) { if (!m.hidden) { m.hidden = true; m.innerHTML = ''; } return; }
+    const html = '<div class="notice ' + kind + '">' + icon(kind === 'err' ? 'alert' : 'info') + '<div><p style="margin:0;color:var(--text)">' + esc(text) + '</p></div></div>';
+    if (m.innerHTML !== html) m.innerHTML = html;
     m.hidden = false;
-    m.innerHTML = '<div class="notice ' + kind + '">' + icon(kind === 'ok' ? 'check' : kind === 'err' ? 'alert' : 'info') + '<div><p style="margin:0;color:var(--text)">' + esc(text) + '</p></div></div>';
   }
+  const STATE_LABEL = { offline: '未連線', connecting: '連線中', online: '已連線', error: '連線失敗' };
   function syncConnSheet() {
-    const btn = $('#connectBtn'); if (!btn) return;
-    const same = Conn.driver && Conn.kind === uiKind;
-    if (same && Conn.state === 'online' && uiKind !== 'sim') { btn.textContent = '中斷連線'; btn.className = 'btn danger'; } else if (same && Conn.state === 'connecting') { btn.textContent = '取消連線'; btn.className = 'btn'; } else { btn.textContent = uiKind === 'sim' ? '使用模擬模式' : '連線'; btn.className = 'btn primary'; }
-    if (!openSheetEl || openSheetEl.id !== 'connSheet') return;
-    if (same && Conn.state === 'connecting') setConnMsg('info', Conn.msg || '連線中…');
-    else if (same && Conn.state === 'error') setConnMsg('err', Conn.msg);
-    else if (same && Conn.state === 'online') setConnMsg('ok', uiKind === 'sim' ? '目前是模擬模式。' : '已連線：' + Conn.driver.short);
-    if (connWaiting && Conn.state === 'online') { connWaiting = false; setTimeout(() => { if (openSheetEl && openSheetEl.id === 'connSheet') closeSheet(); }, 500); }
-    if (connWaiting && Conn.state === 'error') connWaiting = false;
+    for (const o of OUT_LIST) {
+      const card = cardOf(o.kind); if (!card) continue;
+      const chip = $('.state-chip', card), btn = $('.conn-btn', card);
+      chip.dataset.state = o.state; chip.textContent = STATE_LABEL[o.state];
+      card.dataset.state = o.state;
+      if (o.state === 'online') { btn.textContent = '中斷'; btn.className = 'btn sm danger conn-btn'; } else if (o.state === 'connecting') { btn.textContent = '取消'; btn.className = 'btn sm conn-btn'; } else { btn.textContent = '連線'; btn.className = 'btn sm primary conn-btn'; }
+      if (o.formErr) setCardMsg(card, 'err', o.formErr);
+      else if (o.state === 'connecting') setCardMsg(card, 'info', o.msg || '連線中…');
+      else if (o.state === 'error') setCardMsg(card, 'err', o.msg);
+      else setCardMsg(card, '', '');
+    }
   }
-  function doConnect() {
+  function toggleOut(kind) {
     readForm();
-    const k = uiKind;
-    if (Conn.driver && Conn.kind === k && (Conn.state === 'online' || Conn.state === 'connecting') && k !== 'sim') { disconnect(); setConnMsg('', ''); syncConnSheet(); return; }
-    const err = validate(k);
-    if (err) { setConnMsg('err', err); return; }
-    connForm.kind = k;
-    store.set('connForm', connForm);
-    connWaiting = true;
-    if (k === 'webduino') connect('webduino', Object.assign({}, connForm.webduino));
-    else if (k === 'mqtt') connect('mqtt', Object.assign({}, connForm.mqtt, { pass: mqPass }));
-    else connect('sim', {});
+    const o = Outs[kind];
+    if (o.state === 'online' || o.state === 'connecting') { o.formErr = ''; disconnectOut(kind); return; }
+    const err = validate(kind);
+    o.formErr = err;
+    if (err) { syncConnSheet(); setCollapsed(kind, false); return; }
+    saveForm();
+    if (kind === 'webduino') connectOut('webduino', Object.assign({}, connForm.webduino));
+    else connectOut('mqtt', Object.assign({}, connForm.mqtt, { pass: mqPass }));
   }
   function buildConnSheet() {
     $('#wdPin').innerHTML = PINS.map(p => '<option value="' + p + '">' + (p < 10 ? '0' + p : p) + (p === 5 ? '（接線圖預設）' : '') + '</option>').join('');
     $('#brokerChips').innerHTML = BROKERS.map(b => '<button class="pill-btn" type="button" data-url="' + b.url + '">' + b.name + '</button>').join('');
     UI.qos = segControl([['0', 'QoS 0 最多一次'], ['1', 'QoS 1 至少一次']], connForm.mqtt.qos, v => { connForm.mqtt.qos = +v; });
     $('#mqQosSlot').replaceWith(UI.qos);
-    $$('#connSheet .kind').forEach(b => b.addEventListener('click', () => { showKind(b.dataset.kind); setConnMsg('', ''); haptic(6); }));
+    $$('#connSheet .conn-card').forEach(card => {
+      const kind = card.dataset.kind, head = $('.conn-card-head', card);
+      head.addEventListener('click', e => {
+        if (e.target.closest('.conn-btn')) return;
+        setCollapsed(kind, !card.classList.contains('collapsed')); haptic(5);
+      });
+      head.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === head) { e.preventDefault(); setCollapsed(kind, !card.classList.contains('collapsed')); } });
+      $('.conn-btn', card).addEventListener('click', () => { toggleOut(kind); haptic(8); });
+    });
     $('#brokerChips').addEventListener('click', e => { const b = e.target.closest('.pill-btn'); if (!b) return; $('#mqBroker').value = b.dataset.url; updateBrokerChips(); });
     $('#mqBroker').addEventListener('input', updateBrokerChips);
     $('#mqTopic').addEventListener('input', updateTopicTable);
     $('#mqRandom').addEventListener('click', () => { $('#mqTopic').value = 'classroom/servo/' + randId(4); updateTopicTable(); haptic(8); });
-    $('#connectBtn').addEventListener('click', doConnect);
-    $('#shareBtn').addEventListener('click', () => { readForm(); openShare(); });
+    $('#shareBtn').addEventListener('click', () => { readForm(); shareSel = null; openShare(); });
+    $('#shareKinds').addEventListener('click', e => {
+      const b = e.target.closest('.pill-btn'); if (!b) return;
+      shareSel[b.dataset.kind] = !shareSel[b.dataset.kind]; haptic(5); openShare(true);
+    });
     fillForm();
   }
 
   // 分享：把連線設定放進網址，產生 QR Code
+  // 網址格式：?conn=webduino,mqtt&device=…&pin=…&broker=…&topic=…&mode=…（兩個都不選＝模擬模式）
   function shareUrl() {
     const u = new URL(location.href); u.hash = '';
-    const p = new URLSearchParams();
-    if (uiKind === 'webduino') { p.set('conn', 'webduino'); if (connForm.webduino.device) p.set('device', connForm.webduino.device); p.set('pin', connForm.webduino.pin); } else if (uiKind === 'mqtt') { p.set('conn', 'mqtt'); p.set('broker', connForm.mqtt.broker); p.set('topic', connForm.mqtt.topic); if (connForm.mqtt.qos) p.set('qos', '1'); if (connForm.mqtt.user) p.set('user', connForm.mqtt.user); } else p.set('conn', 'sim');
+    const p = new URLSearchParams(), kinds = [];
+    if (shareSel.webduino && connForm.webduino.device) kinds.push('webduino');
+    if (shareSel.mqtt && connForm.mqtt.topic) kinds.push('mqtt');
+    p.set('conn', kinds.length ? kinds.join(',') : 'sim');
+    if (kinds.indexOf('webduino') >= 0) { p.set('device', connForm.webduino.device); p.set('pin', connForm.webduino.pin); }
+    if (kinds.indexOf('mqtt') >= 0) { p.set('broker', connForm.mqtt.broker); p.set('topic', connForm.mqtt.topic); if (connForm.mqtt.qos) p.set('qos', '1'); if (connForm.mqtt.user) p.set('user', connForm.mqtt.user); }
     if (active) p.set('mode', active.def.id);
     u.search = p.toString();
     return u.toString();
   }
-  async function openShare() {
+  async function openShare(refresh) {
+    // 預設勾選目前有開啟的連線；都沒開就兩個都勾
+    if (!shareSel) { const act = activeOuts(); shareSel = act.length ? { webduino: Outs.webduino.state !== 'offline', mqtt: Outs.mqtt.state !== 'offline' } : { webduino: true, mqtt: true }; }
+    $('#shareKinds').innerHTML =
+      '<button class="pill-btn" type="button" data-kind="webduino" aria-pressed="' + !!shareSel.webduino + '">Webduino · ' + esc(connForm.webduino.device || '—') + '</button>' +
+      '<button class="pill-btn" type="button" data-kind="mqtt" aria-pressed="' + !!shareSel.mqtt + '">MQTT · ' + esc(connForm.mqtt.topic || '—') + '</button>';
     const url = shareUrl();
-    openSheet('#shareSheet');
+    if (!refresh) openSheet('#shareSheet');
     $('#shareUrl').value = url;
     const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname) || location.protocol === 'file:';
     $('#shareWarn').innerHTML = local
@@ -1765,7 +1820,7 @@
     const fMax = rangeField({ label: '最大角度', min: 90, max: 180, value: cfg.max, unit: '°', onInput: v => { cfg.max = Math.max(v, cfg.min + 10); fMax.set(cfg.max); saveCfg(); updateLimits(); } });
     sec('輸出安全', [
       fMin, fMax,
-      switchField('反轉方向', cfg.invert, v => { cfg.invert = v; saveCfg(); E.lastSent = null; }, '伺服馬達裝反了？送出 180 − 角度'),
+      switchField('反轉方向', cfg.invert, v => { cfg.invert = v; saveCfg(); resendAll(); }, '伺服馬達裝反了？送出 180 − 角度'),
       rangeField({ label: '感測器平滑程度', min: 0, max: 1, step: 0.05, value: cfg.smooth, fmt: v => Math.round(v * 100) + '%', onInput: v => { cfg.smooth = v; saveCfg(); } }),
       rangeField({ label: '每秒最多送出', min: 5, max: 30, value: cfg.rate, unit: ' 則', onInput: v => { cfg.rate = v; saveCfg(); } }),
       h('<p class="hint">限制角度可避免機構卡死；平滑可減少感測器抖動；限制送出頻率可避免塞爆 Broker 和開發板。</p>')
@@ -1823,12 +1878,12 @@
       $('svg', b).outerHTML = icon(E.locked ? 'lock' : 'unlock');
       $('span', b).textContent = E.locked ? '解除鎖定' : '鎖定輸出';
       $('#lockFlag').hidden = !E.locked;
-      if (!E.locked) E.lastSent = null;
+      if (!E.locked) resendAll();
       toast(E.locked ? '輸出已鎖定：手機怎麼動，伺服馬達都不會轉' : '已解除鎖定', E.locked ? 'warn' : 'ok');
       haptic(15);
     });
-    $('#qbConn').addEventListener('click', () => { showKind(Conn.driver ? Conn.kind : connForm.kind); openSheet('#connSheet'); syncConnSheet(); });
-    $('#statusBtn').addEventListener('click', () => { showKind(Conn.driver ? Conn.kind : connForm.kind); openSheet('#connSheet'); syncConnSheet(); });
+    $('#qbConn').addEventListener('click', openConnSheet);
+    $('#statusBtn').addEventListener('click', openConnSheet);
     $('#settingsBtn').addEventListener('click', () => { buildSettings(); openSheet('#settingsSheet'); });
     $('#backdrop').addEventListener('click', () => closeSheet());
     $$('[data-close]').forEach(b => b.addEventListener('click', () => closeSheet()));
@@ -1863,19 +1918,19 @@
     activate(MODES.some(m => m.id === startMode) ? startMode : 'slider');
     renderRec();
 
-    const qc = q.get('conn');
-    if (qc === 'webduino' && q.get('device')) {
-      Object.assign(connForm.webduino, { device: q.get('device'), pin: PINS.indexOf(+q.get('pin')) >= 0 ? +q.get('pin') : 5 });
-      connForm.kind = uiKind = 'webduino'; fillForm(); store.set('connForm', connForm);
-      connect('webduino', Object.assign({}, connForm.webduino));
-    } else if (qc === 'mqtt' && q.get('topic')) {
-      Object.assign(connForm.mqtt, { broker: q.get('broker') || BROKERS[0].url, topic: q.get('topic'), qos: q.get('qos') === '1' ? 1 : 0, user: q.get('user') || '' });
-      connForm.kind = uiKind = 'mqtt'; fillForm(); store.set('connForm', connForm);
-      if (!validate('mqtt')) connect('mqtt', Object.assign({}, connForm.mqtt));
-    } else {
-      connect('sim', {});
-    }
     log('sys', '伺服馬達遙控台已啟動', navigator.userAgent.indexOf('iPhone') >= 0 ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : '電腦');
+    // ?conn=webduino,mqtt 可以同時開啟兩種連線；沒有參數就是模擬模式
+    const kinds = (q.get('conn') || '').split(',').map(s => s.trim());
+    if (kinds.indexOf('webduino') >= 0 && q.get('device')) {
+      Object.assign(connForm.webduino, { device: q.get('device'), pin: PINS.indexOf(+q.get('pin')) >= 0 ? +q.get('pin') : 5 });
+    }
+    if (kinds.indexOf('mqtt') >= 0 && q.get('topic')) {
+      Object.assign(connForm.mqtt, { broker: q.get('broker') || BROKERS[0].url, topic: q.get('topic'), qos: q.get('qos') === '1' ? 1 : 0, user: q.get('user') || '' });
+    }
+    fillForm(); saveForm();
+    if (kinds.indexOf('webduino') >= 0 && q.get('device') && !validate('webduino')) connectOut('webduino', Object.assign({}, connForm.webduino));
+    if (kinds.indexOf('mqtt') >= 0 && q.get('topic') && !validate('mqtt')) connectOut('mqtt', Object.assign({}, connForm.mqtt));
+    renderStatus(); syncConnSheet();
     requestAnimationFrame(t => { lastT = t; loop(t); });
   }
 

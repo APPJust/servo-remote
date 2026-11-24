@@ -92,6 +92,7 @@ p{margin:0}
 .brand h1{font-size:16px;font-weight:700;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand p{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:400px){.brand p{display:none}.brand h1{font-size:15px}}
+@media (max-width:440px){body.multi-conn .brand > div{display:none}}
 .status{display:inline-flex;align-items:center;gap:8px;height:36px;max-width:52vw;padding:0 12px 0 10px;border-radius:99px;border:1px solid var(--line-2);background:var(--panel);font-size:13px;font-weight:600;box-shadow:var(--shadow)}
 .status .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .status .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--faint);box-shadow:0 0 0 3px transparent}
@@ -483,6 +484,30 @@ p{margin:0}
 details.adv summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--dim);padding:4px 0}
 details.adv[open] summary{margin-bottom:10px}
 .conn-msg{font-size:13px}
+.conn-card{border:1.5px solid var(--line-2);border-radius:20px;background:var(--panel);overflow:hidden;transition:border-color .2s}
+.conn-card[data-state="online"]{border-color:var(--ok)}
+.conn-card[data-state="connecting"]{border-color:var(--warn)}
+.conn-card[data-state="error"]{border-color:var(--err)}
+.conn-card-head{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 12px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.conn-card-head:focus-visible{outline-offset:-2px;border-radius:20px}
+.k-ico{width:42px;height:42px;flex:none;border-radius:13px;display:grid;place-items:center;background:var(--panel-2);color:var(--dim)}
+.k-ico .ico{width:22px;height:22px}
+.conn-card[data-state="online"] .k-ico{background:var(--ok-soft);color:var(--ok)}
+.k-txt{flex:1;min-width:0}
+.k-txt b{display:block;font-size:15px;line-height:1.3}
+.k-sub{display:flex;align-items:center;gap:6px;margin-top:3px;min-width:0}
+.k-sub small{font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.state-chip{flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--panel-3);color:var(--faint);white-space:nowrap}
+.state-chip[data-state="online"]{background:var(--ok-soft);color:var(--ok)}
+.state-chip[data-state="connecting"]{background:var(--warn-soft);color:var(--warn)}
+.state-chip[data-state="error"]{background:var(--err-soft);color:var(--err)}
+.conn-card-head .chev{width:16px;height:16px;color:var(--faint);transition:transform .2s}
+.conn-card.collapsed .chev{transform:rotate(-90deg)}
+.conn-btn{flex:none;min-width:58px}
+.conn-card > .conn-msg{padding:0 12px 12px}
+.conn-card-body{display:grid;gap:14px;padding:4px 14px 16px;border-top:1px solid var(--line)}
+.conn-card-body > :first-child{margin-top:10px}
+.conn-card.collapsed .conn-card-body{display:none}
 
 /* QR 分享 */
 .qr-box{display:grid;place-items:center;padding:18px;border-radius:20px;background:#fff;width:min(280px,72vw);margin:0 auto;aspect-ratio:1}
@@ -601,28 +626,36 @@ details.adv[open] summary{margin-bottom:10px}
 <section class="sheet" id="connSheet" role="dialog" aria-modal="true" aria-labelledby="connTitle" hidden>
   <div class="grab"></div>
   <header class="sheet-head">
-    <div><h2 id="connTitle">連線到開發板</h2><p>選擇手機要透過哪一條路，把角度送到伺服馬達。</p></div>
+    <div><h2 id="connTitle">連線到開發板</h2><p>兩種連線可以同時開啟，每個角度會同時送出；都沒開啟時是模擬模式。</p></div>
     <button class="icon-btn" data-close type="button" aria-label="關閉"><i data-icon="x"></i></button>
   </header>
   <div class="sheet-body">
-    <div class="kinds" role="radiogroup" aria-label="連線方式">
-      <button class="kind" type="button" role="radio" data-kind="webduino"><i data-icon="chip"></i><b>Webduino</b><small>雲端 Device ID<br>不用改韌體</small></button>
-      <button class="kind" type="button" role="radio" data-kind="mqtt"><i data-icon="broker"></i><b>MQTT Broker</b><small>自訂 Topic<br>ESP 範例韌體</small></button>
-      <button class="kind" type="button" role="radio" data-kind="sim"><i data-icon="monitor"></i><b>模擬</b><small>不接開發板<br>先練習操作</small></button>
-    </div>
-
-    <div class="kind-pane" data-pane="webduino">
-      <div class="sheet-body">
+    <section class="conn-card" data-kind="webduino">
+      <div class="conn-card-head" role="button" tabindex="0" aria-expanded="true">
+        <span class="k-ico"><i data-icon="chip"></i></span>
+        <div class="k-txt"><b>Webduino 雲端</b><span class="k-sub"><span class="state-chip" data-state="offline">未連線</span><small>Device ID · 不用改韌體</small></span></div>
+        <i data-icon="chevron" class="chev"></i>
+        <button class="btn sm primary conn-btn" type="button">連線</button>
+      </div>
+      <div class="conn-msg" hidden></div>
+      <div class="conn-card-body">
         <p class="hint">和 Webduino Blockly 相同的連線方式：Webduino Smart 連上 Wi-Fi 後，網頁用 Device ID 透過 Webduino 的 MQTT Broker 傳送指令。</p>
         <div class="flow"><span>手機網頁</span><i>→</i><span class="mono">wss://ws.webduino.io</span><i>→</i><span>Webduino Smart</span><i>→</i><span>SG90</span></div>
         <label class="field"><span class="field-label">Device ID</span><input class="input mono" id="wdDevice" placeholder="例如 YdrMW" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
         <label class="field"><span class="field-label">伺服馬達訊號腳位</span><select class="input" id="wdPin"></select></label>
         <label class="switch-row"><span><span class="field-label">斷線後自動重新連線</span><small>每 5 秒重試一次</small></span><input type="checkbox" class="switch" id="wdAuto"></label>
       </div>
-    </div>
+    </section>
 
-    <div class="kind-pane" data-pane="mqtt">
-      <div class="sheet-body">
+    <section class="conn-card" data-kind="mqtt">
+      <div class="conn-card-head" role="button" tabindex="0" aria-expanded="true">
+        <span class="k-ico"><i data-icon="broker"></i></span>
+        <div class="k-txt"><b>MQTT Broker</b><span class="k-sub"><span class="state-chip" data-state="offline">未連線</span><small>Topic · ESP 範例韌體</small></span></div>
+        <i data-icon="chevron" class="chev"></i>
+        <button class="btn sm primary conn-btn" type="button">連線</button>
+      </div>
+      <div class="conn-msg" hidden></div>
+      <div class="conn-card-body">
         <p class="hint">網頁直接把角度 <b>publish</b> 到 MQTT Broker，開發板 <b>subscribe</b> 同一個 Topic。開發板需要燒錄附的 <code>firmware/ServoMQTT</code> 範例程式。</p>
         <div class="flow"><span>手機網頁</span><i>→ publish →</i><span>Broker</span><i>→ subscribe →</i><span>ESP 開發板</span><i>→</i><span>SG90</span></div>
         <div class="field">
@@ -654,17 +687,13 @@ details.adv[open] summary{margin-bottom:10px}
           </div>
         </details>
       </div>
-    </div>
+    </section>
 
-    <div class="kind-pane" data-pane="sim">
-      <div class="notice info"><i data-icon="info"></i><div><b>不接開發板也能玩</b><p>畫面上的 SG90 會依照真實的轉速（約 0.1 秒轉 60°）模擬動作，適合先熟悉 13 種控制方式，或上課投影示範。</p></div></div>
-    </div>
-
-    <div class="conn-msg" id="connMsg" hidden></div>
+    <p class="hint">兩個都沒開啟時，畫面上的 SG90 會依照真實轉速（約 0.1 秒轉 60°）模擬動作，適合先熟悉各種控制方式或上課投影示範。</p>
   </div>
   <div class="sheet-actions">
     <button class="btn" id="shareBtn" type="button"><i data-icon="qr"></i>分享</button>
-    <button class="btn primary" id="connectBtn" type="button">連線</button>
+    <button class="btn primary" data-close type="button">完成</button>
   </div>
 </section>
 
@@ -676,6 +705,7 @@ details.adv[open] summary{margin-bottom:10px}
     <button class="icon-btn" data-close type="button" aria-label="關閉"><i data-icon="x"></i></button>
   </header>
   <div class="sheet-body">
+    <div class="field"><span class="field-label">手機開啟後自動連線（可複選，都不選＝模擬模式）</span><div class="chips" id="shareKinds"></div></div>
     <div class="qr-box loading" id="qrBox">產生中…</div>
     <div class="input-group"><input class="input mono" id="shareUrl" readonly><button class="btn" id="copyUrl" type="button"><i data-icon="copy"></i>複製</button></div>
     <div id="shareWarn"></div>
@@ -694,6 +724,6 @@ details.adv[open] summary{margin-bottom:10px}
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="app.js?v=4"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
