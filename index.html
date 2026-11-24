@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>伺服馬達遙控台</title>
+<meta name="description" content="用手機的觸控、陀螺儀、加速度計、麥克風、語音與相機，透過 Webduino 雲端或 MQTT 控制開發板上的伺服馬達。">
+<meta name="theme-color" content="#0a0d14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="伺服遙控台">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23ff7a2e'/%3E%3Cpath d='M13 45a19 19 0 0 1 38 0' fill='none' stroke='white' stroke-opacity='.55' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M32 45L45 24' stroke='white' stroke-width='6.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='45' r='6' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* ═════════════ 設計變數（淺色 / 深色） ═════════════ */
+:root{
+  --bg:#f2f4f8; --bg-glass:rgba(242,244,248,.8);
+  --panel:#ffffff; --panel-2:#f5f7fa; --panel-3:#eaeef4;
+  --line:rgba(16,24,40,.08); --line-2:rgba(16,24,40,.15);
+  --text:#0d1424; --dim:#556072; --faint:#8b95a6;
+  --accent:#ee6418; --accent-2:#ff9442; --accent-soft:rgba(238,100,24,.11); --accent-ink:#c24d0c;
+  --blue:#2463eb; --blue-soft:rgba(36,99,235,.1);
+  --ok:#0f9f6e; --ok-soft:rgba(15,159,110,.12);
+  --warn:#b97800; --warn-soft:rgba(217,145,0,.14);
+  --err:#e0444b; --err-soft:rgba(224,68,75,.11); --rec:#ef3b4c;
+  --track:#e3e7ee; --knob-hi:#ffffff; --knob-lo:#d3d9e3;
+  --glow-1:rgba(238,100,24,.10); --glow-2:rgba(36,99,235,.08);
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 10px 30px -12px rgba(16,24,40,.14);
+  --shadow-lg:0 24px 60px -20px rgba(16,24,40,.35);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"Noto Sans TC",-apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#090c13; --bg-glass:rgba(9,12,19,.78);
+    --panel:#111723; --panel-2:#171e2b; --panel-3:#1e2636;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
+    --text:#e8edf5; --dim:#9aa4b6; --faint:#677186;
+    --accent:#ff7a2e; --accent-2:#ffaa5c; --accent-soft:rgba(255,122,46,.13); --accent-ink:#ff9a5a;
+    --blue:#64a2ff; --blue-soft:rgba(100,162,255,.13);
+    --ok:#36d39a; --ok-soft:rgba(54,211,154,.13);
+    --warn:#f7b928; --warn-soft:rgba(247,185,40,.13);
+    --err:#ff6b70; --err-soft:rgba(255,107,112,.13); --rec:#ff4d5e;
+    --track:#1f2737; --knob-hi:#3e485c; --knob-lo:#141a26;
+    --glow-1:rgba(255,122,46,.10); --glow-2:rgba(100,162,255,.08);
+    --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 12px 32px -14px rgba(0,0,0,.6);
+    --shadow-lg:0 30px 70px -20px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#090c13; --bg-glass:rgba(9,12,19,.78);
+  --panel:#111723; --panel-2:#171e2b; --panel-3:#1e2636;
+  --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
+  --text:#e8edf5; --dim:#9aa4b6; --faint:#677186;
+  --accent:#ff7a2e; --accent-2:#ffaa5c; --accent-soft:rgba(255,122,46,.13); --accent-ink:#ff9a5a;
+  --blue:#64a2ff; --blue-soft:rgba(100,162,255,.13);
+  --ok:#36d39a; --ok-soft:rgba(54,211,154,.13);
+  --warn:#f7b928; --warn-soft:rgba(247,185,40,.13);
+  --err:#ff6b70; --err-soft:rgba(255,107,112,.13); --rec:#ff4d5e;
+  --track:#1f2737; --knob-hi:#3e485c; --knob-lo:#141a26;
+  --glow-1:rgba(255,122,46,.10); --glow-2:rgba(100,162,255,.08);
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 12px 32px -14px rgba(0,0,0,.6);
+  --shadow-lg:0 30px 70px -20px rgba(0,0,0,.7);
+  color-scheme:dark;
+}
+
+/* ═════════════ 基礎 ═════════════ */
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;min-height:100vh;min-height:100dvh;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+.bgfx{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 520px at 8% -12%,var(--glow-1),transparent 62%),radial-gradient(760px 520px at 108% 6%,var(--glow-2),transparent 60%)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;touch-action:manipulation}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ico{width:20px;height:20px;flex:none}
+.mono{font-family:var(--mono)}
+code{font-family:var(--mono);font-size:.88em;padding:1px 6px;border-radius:6px;background:var(--panel-3);color:var(--accent-ink);overflow-wrap:anywhere}
+h1,h2,h3{margin:0;line-height:1.3}
+p{margin:0}
+
+/* ═════════════ 頂列 ═════════════ */
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--bg-glass);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.logo{width:36px;height:36px;border-radius:11px;flex:none;display:grid;place-items:center;background:linear-gradient(145deg,var(--accent-2),var(--accent));box-shadow:0 6px 16px -6px var(--accent)}
+.logo svg{width:24px;height:24px}
+.brand > div{min-width:0}
+.brand h1{font-size:16px;font-weight:700;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand p{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:400px){.brand p{display:none}.brand h1{font-size:15px}}
+.status{display:inline-flex;align-items:center;gap:8px;height:36px;max-width:52vw;padding:0 12px 0 10px;border-radius:99px;border:1px solid var(--line-2);background:var(--panel);font-size:13px;font-weight:600;box-shadow:var(--shadow)}
+.status .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--faint);box-shadow:0 0 0 3px transparent}
+.status.ok .dot{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.status.sim .dot{background:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.status.warn .dot{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+.status.err .dot{background:var(--err);box-shadow:0 0 0 3px var(--err-soft)}
+.status.pulse .dot{animation:pulse 1.1s ease-in-out infinite}
+.status .chev{width:14px;height:14px;color:var(--faint)}
+@keyframes pulse{50%{opacity:.35}}
+.icon-btn{width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:12px;border:1px solid var(--line-2);background:var(--panel);color:var(--dim);box-shadow:var(--shadow)}
+.icon-btn:active{transform:scale(.95)}
+
+.banner{margin:12px 16px 0;padding:12px 14px;border-radius:14px;display:flex;gap:10px;align-items:flex-start;font-size:13.5px}
+.banner.warn{background:var(--warn-soft);color:var(--text);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}
+.banner .ico{color:var(--warn);margin-top:2px}
+
+/* ═════════════ 版面 ═════════════ */
+.layout{display:grid;gap:14px;max-width:1240px;margin:0 auto;padding:14px 16px calc(100px + env(safe-area-inset-bottom))}
+.col-stage,.col-control{display:grid;gap:14px;min-width:0;align-content:start}
+@media (min-width:980px){
+  .layout{grid-template-columns:minmax(380px,450px) minmax(0,1fr);gap:22px;padding:22px 24px 40px}
+  .col-stage{position:sticky;top:78px}
+}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}
+
+/* ═════════════ 舞台（伺服馬達儀表） ═════════════ */
+.stage{position:relative;overflow:hidden;padding:16px 16px 12px}
+.stage::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(420px 220px at 50% 108%,var(--accent-soft),transparent 70%)}
+.stage-head{position:relative;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--faint)}
+.angle{display:flex;align-items:flex-start;font-family:var(--mono);font-weight:700;font-size:50px;line-height:1;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums}
+.angle .deg{font-size:26px;color:var(--accent);margin-top:4px}
+.sub{font-size:12.5px;color:var(--dim);margin-top:6px}
+.sub b{color:var(--text);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(2,auto);gap:6px}
+.stat{min-width:68px;padding:7px 10px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);text-align:right}
+.stat b{display:block;font-family:var(--mono);font-size:16px;line-height:1.2;font-variant-numeric:tabular-nums}
+.stat small{font-size:10.5px;color:var(--faint)}
+.gauge-wrap{position:relative;margin:2px -4px 0}
+#gauge{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+#gauge.draggable{cursor:grab}
+#gauge.draggable:active{cursor:grabbing}
+.g-track{fill:none;stroke:var(--track);stroke-width:12;stroke-linecap:round}
+.g-limit{fill:none;stroke:var(--err);stroke-opacity:.45;stroke-width:12;stroke-linecap:butt}
+.g-prog{fill:none;stroke:url(#gProg);stroke-width:12;stroke-linecap:round}
+.tk{stroke:var(--faint);stroke-width:1.2;opacity:.55}
+.tk.major{stroke:var(--dim);stroke-width:2;opacity:.9}
+.glabel{font-family:var(--mono);font-size:11px;fill:var(--faint)}
+.g-target line{stroke:var(--blue);stroke-width:2;stroke-dasharray:4 5;stroke-linecap:round}
+.g-target circle{fill:var(--blue);stroke:var(--panel);stroke-width:3}
+.flags{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin-top:-2px}
+.flag{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--panel-2);border:1px solid var(--line);color:var(--dim)}
+.flag .ico{width:14px;height:14px}
+.flag.lock{color:var(--warn);background:var(--warn-soft);border-color:transparent}
+.flag.rec{color:#fff;background:var(--rec);border-color:transparent}
+.flag.rec::before{content:"";width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1s infinite}
+.flag.board.on{color:var(--ok);background:var(--ok-soft);border-color:transparent}
+.flag.board.off{color:var(--warn);background:var(--warn-soft);border-color:transparent}
+.spark-wrap{position:relative;margin-top:10px}
+#spark{display:block;width:100%;height:42px}
+.spark-legend{display:flex;justify-content:space-between;gap:10px;font-size:10.5px;color:var(--faint);margin-bottom:2px}
+.spark-legend > span:first-child{letter-spacing:.1em;font-weight:700}
+.spark-legend i{display:inline-block;width:12px;height:2px;border-radius:2px;vertical-align:middle;margin-right:4px}
+
+/* ═════════════ 快捷列 ═════════════ */
+.quickbar{position:fixed;z-index:35;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;border-radius:22px;background:var(--bg-glass);-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);border:1px solid var(--line-2);box-shadow:var(--shadow-lg)}
+.qb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:54px;border:0;border-radius:16px;background:transparent;font-size:11.5px;font-weight:600;color:var(--text);transition:background .2s,color .2s}
+.qb .ico{width:22px;height:22px}
+.qb:active{background:var(--panel-3)}
+.qb.on.rec{background:var(--rec);color:#fff}
+.qb.on.lock{background:var(--warn-soft);color:var(--warn)}
+.qb.on.conn{color:var(--ok)}
+.qb:disabled{opacity:.4}
+@media (min-width:980px){.quickbar{position:static;background:var(--panel);box-shadow:var(--shadow);border-color:var(--line)}}
+
+/* ═════════════ 新手導覽 ═════════════ */
+.intro{display:flex;align-items:center;gap:6px;padding:10px 8px 10px 12px;background:linear-gradient(135deg,var(--accent-soft),var(--blue-soft)),var(--panel)}
+.steps{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0;padding:0;list-style:none;counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:auto 1fr;column-gap:7px;align-items:center;font-size:11.5px;color:var(--dim);line-height:1.35}
+.steps li::before{content:counter(s);grid-row:span 2;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-family:var(--mono);font-size:12px;font-weight:700}
+.steps b{color:var(--text);font-size:13px}
+.link-btn{border:0;background:none;color:var(--accent-ink);font-size:13px;font-weight:600;padding:4px 6px;border-radius:8px}
+
+/* ═════════════ 模式列 ═════════════ */
+.dock{display:flex;gap:14px;overflow-x:auto;margin:0 -16px;padding:2px 16px 4px;scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.dock::-webkit-scrollbar{display:none}
+.dock-group{flex:none;display:grid;gap:6px}
+.dock-label{font-size:10.5px;font-weight:700;letter-spacing:.12em;color:var(--faint);padding-left:2px}
+.dock-chips{display:flex;gap:6px}
+.chip{position:relative;flex:none;scroll-snap-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:70px;height:70px;border-radius:16px;border:1px solid var(--line);background:var(--panel);color:var(--dim);font-size:12px;font-weight:600;box-shadow:var(--shadow);transition:background .2s,color .2s,border-color .2s,transform .12s}
+.chip .ico{width:24px;height:24px}
+.chip:active{transform:scale(.96)}
+.chip[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.chip.na::after{content:"";position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--faint)}
+@media (min-width:980px){.dock{flex-wrap:wrap;overflow:visible;margin:0;padding:0;row-gap:12px}}
+
+/* ═════════════ 控制面板 ═════════════ */
+.panel{overflow:hidden}
+.panel-head{display:flex;gap:12px;align-items:flex-start;padding:18px 18px 4px}
+.panel-ico{width:46px;height:46px;flex:none;border-radius:14px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink)}
+.panel-ico .ico{width:24px;height:24px}
+.panel-head h2{font-size:18px}
+.panel-head p{font-size:13.5px;color:var(--dim);margin-top:2px}
+.api{display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:2px 8px;border-radius:99px;border:1px solid var(--line-2);font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.api.na{color:var(--err);border-color:var(--err-soft);background:var(--err-soft)}
+.panel-body{display:grid;gap:16px;padding:14px 18px 20px}
+.sub-h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--faint)}
+.hint{font-size:12.5px;color:var(--faint);line-height:1.6}
+.hint.center{text-align:center}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row > .grow{flex:1}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* 按鈕 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 16px;border-radius:13px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--text);font-weight:600;font-size:14.5px;white-space:nowrap;transition:transform .12s,background .2s,border-color .2s,box-shadow .2s;user-select:none;-webkit-user-select:none}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.45;pointer-events:none}
+.btn.primary{background:linear-gradient(180deg,var(--accent-2),var(--accent));border-color:transparent;color:#fff;box-shadow:0 8px 20px -8px var(--accent)}
+.btn.blue{background:var(--blue);border-color:transparent;color:#fff}
+.btn.danger{color:var(--err);background:var(--err-soft);border-color:transparent}
+.btn.ghost{background:transparent}
+.btn.sm{height:34px;padding:0 12px;font-size:13px;border-radius:10px}
+.btn.lg{height:52px;font-size:16px;border-radius:15px}
+.btn.block{width:100%}
+.btn .ico{width:18px;height:18px}
+
+/* 欄位 */
+.field{display:grid;gap:6px}
+.field-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.field-label{font-size:13px;font-weight:600;color:var(--dim)}
+.field-val{font-family:var(--mono);font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+.input,select.input{width:100%;height:46px;padding:0 14px;border-radius:13px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--text);font-size:16px}
+.input.mono{font-family:var(--mono);font-size:15px}
+.input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.input-group{display:flex;gap:8px}
+.input-group .input{flex:1;min-width:0}
+
+/* 滑桿 */
+.rng{-webkit-appearance:none;appearance:none;width:100%;height:32px;margin:0;background:transparent;--p:50%;cursor:pointer;touch-action:pan-y}
+.rng:focus{outline:none}
+.rng::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p))}
+.rng::-moz-range-track{height:8px;border-radius:99px;background:var(--track)}
+.rng::-moz-range-progress{height:8px;border-radius:99px;background:var(--accent)}
+.rng::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.rng::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.rng:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 5px var(--accent-soft)}
+.rng.xl{height:60px}
+.rng.xl::-webkit-slider-runnable-track{height:16px}
+.rng.xl::-moz-range-track{height:16px}
+.rng.xl::-moz-range-progress{height:16px}
+.rng.xl::-webkit-slider-thumb{width:46px;height:46px;margin-top:-15px;border-width:5px}
+.rng.xl::-moz-range-thumb{width:36px;height:36px;border-width:5px}
+
+/* 開關 */
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;cursor:pointer}
+.switch-row small{display:block;font-size:12px;color:var(--faint);font-weight:400;margin-top:1px}
+.switch{-webkit-appearance:none;appearance:none;flex:none;position:relative;width:48px;height:28px;margin:0;border-radius:99px;background:var(--line-2);cursor:pointer;transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:transform .22s cubic-bezier(.3,1.4,.5,1)}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(20px)}
+
+/* 分段按鈕 */
+.seg{display:flex;gap:4px;padding:4px;border-radius:13px;background:var(--panel-2);border:1px solid var(--line)}
+.seg button{flex:1;min-width:0;height:36px;padding:0 6px;border:0;border-radius:10px;background:transparent;color:var(--dim);font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .2s,color .2s}
+.seg button[aria-checked="true"]{background:var(--panel);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.14),inset 0 0 0 1px var(--line-2)}
+
+/* 提示 / 通知 */
+.notice{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:14px;font-size:13px;border:1px solid var(--line)}
+.notice .ico{margin-top:1px}
+.notice b{display:block;font-size:13.5px}
+.notice p{color:var(--dim);margin-top:2px;line-height:1.55}
+.notice > div{flex:1}
+.notice .btn{align-self:center}
+.notice.info{background:var(--blue-soft)} .notice.info .ico{color:var(--blue)}
+.notice.warn{background:var(--warn-soft)} .notice.warn .ico{color:var(--warn)}
+.notice.err{background:var(--err-soft)} .notice.err .ico{color:var(--err)}
+.notice.ok{background:var(--ok-soft)} .notice.ok .ico{color:var(--ok)}
+@media (max-width:420px){.notice{flex-wrap:wrap}.notice .btn{width:100%}}
+
+/* 讀數 */
+.readouts{display:grid;gap:6px}
+.ro{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-radius:11px;background:var(--panel-2);border:1px solid var(--line);font-size:12.5px;color:var(--dim)}
+.ro b{font-family:var(--mono);color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
+.ro.hl{border-color:var(--accent);background:var(--accent-soft)}
+.viz-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:center}
+.meter{position:relative;height:14px;border-radius:99px;background:var(--panel-2);border:1px solid var(--line);overflow:visible}
+.meter > i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:99px;background:linear-gradient(90deg,var(--ok),var(--warn) 70%,var(--err))}
+.meter .mk{position:absolute;top:-5px;bottom:-5px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--text)}
+.meter .mk.alt{background:var(--blue)}
+.meter-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:4px}
+.big-num{font-family:var(--mono);font-weight:700;font-size:30px;font-variant-numeric:tabular-nums;line-height:1}
+.big-num small{font-size:13px;color:var(--faint);font-weight:500;margin-left:4px}
+
+/* 滑桿模式 */
+.big-slider{padding:4px 2px 0}
+.scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--faint);padding:0 6px}
+.stepper{display:grid;grid-template-columns:1fr 1fr 1.4fr 1fr 1fr;gap:8px}
+.stepper .btn{padding:0;font-family:var(--mono)}
+.num-input{position:relative;display:block}
+.num-input input{width:100%;height:44px;border-radius:13px;border:1px solid var(--line-2);background:var(--panel);text-align:center;font-family:var(--mono);font-size:18px;font-weight:700;padding:0 18px 0 4px;-moz-appearance:textfield}
+.num-input input::-webkit-inner-spin-button,.num-input input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.num-input span{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--accent);font-weight:700;pointer-events:none}
+
+/* 旋鈕 */
+.knob-wrap{display:grid;place-items:center}
+.knob{width:min(290px,78vw);height:auto;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+.knob:active{cursor:grabbing}
+.k-track{fill:none;stroke:var(--track);stroke-width:10;stroke-linecap:round}
+.k-prog{fill:none;stroke:url(#kProg);stroke-width:10;stroke-linecap:round}
+.k-tick{stroke:var(--faint);stroke-width:1.5}
+.k-tick.major{stroke:var(--dim);stroke-width:2.5}
+.k-shadow{fill:#000;opacity:.25;filter:blur(6px)}
+.k-knurl line{stroke:var(--line-2);stroke-width:2}
+.k-face{fill:var(--panel-2);stroke:var(--line);stroke-width:1}
+.k-dot{fill:var(--accent)}
+.k-val{font-family:var(--mono);font-weight:700;font-size:28px;fill:var(--text)}
+.k-cap{font-size:10px;fill:var(--faint);letter-spacing:.12em}
+
+/* 搖桿（速度） */
+.jog{position:relative;height:118px;border-radius:60px;background:linear-gradient(180deg,var(--panel-3),var(--panel-2));border:1px solid var(--line);box-shadow:inset 0 2px 8px rgba(0,0,0,.12);touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.jog-fill{position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--accent-soft)}
+.jog-arrow{position:absolute;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:22px;font-weight:700;color:var(--faint);letter-spacing:-.1em}
+.jog-arrow.l{left:24px}.jog-arrow.r{right:24px}
+.jog-mid{position:absolute;left:50%;top:18px;bottom:18px;width:2px;margin-left:-1px;background:var(--line-2)}
+.jog-thumb{position:absolute;top:50%;left:50%;width:92px;height:92px;margin:-46px 0 0 -46px;border-radius:50%;background:radial-gradient(circle at 38% 30%,var(--knob-hi),var(--knob-lo));border:1px solid var(--line-2);box-shadow:0 10px 24px -8px rgba(0,0,0,.45);transition:transform .35s cubic-bezier(.3,1.5,.5,1);display:grid;place-items:center}
+.jog-thumb::after{content:"";width:30px;height:30px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px var(--accent-soft)}
+.jog.drag .jog-thumb{transition:none}
+
+/* 快捷角度 */
+.preset-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.preset{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:78px;border-radius:15px;border:1px solid var(--line);background:var(--panel-2);font-family:var(--mono);font-weight:700;font-size:15px;color:var(--text);transition:transform .12s,background .2s,border-color .2s}
+.preset:active{transform:scale(.95)}
+.preset svg{width:40px;height:24px}
+.preset .md-arc{fill:none;stroke:var(--track);stroke-width:3;stroke-linecap:round}
+.preset .md-n{stroke:var(--accent);stroke-width:3;stroke-linecap:round}
+.preset.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+.fav-grid{display:flex;flex-wrap:wrap;gap:8px}
+.fav{position:relative;height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line-2);background:var(--panel-2);font-family:var(--mono);font-weight:700}
+.fav.add{font-family:var(--sans);font-weight:600;color:var(--accent-ink);border-style:dashed}
+.fav .del{position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:50%;background:var(--err);color:#fff;display:none;place-items:center;font-size:13px;line-height:1}
+.fav-grid.editing .fav .del{display:grid}
+.action-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.action{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px;border-radius:15px;border:1px solid var(--line);background:var(--panel-2);font-size:13px;font-weight:600;color:var(--text);transition:transform .12s,background .2s}
+.action .ico{width:24px;height:24px;color:var(--accent)}
+.action:active{transform:scale(.96)}
+.action.playing{background:var(--accent);border-color:transparent;color:#fff}
+.action.playing .ico{color:#fff}
+
+/* 手機 3D / 方向盤 / 指南針 */
+.phone3d{display:grid;place-items:center;height:180px;perspective:520px}
+.phone{position:relative;width:80px;height:156px;border-radius:18px;background:linear-gradient(160deg,#3a4458,#121826);border:2px solid #4a5670;box-shadow:0 18px 30px -12px rgba(0,0,0,.55);transform-style:preserve-3d;will-change:transform}
+.phone-screen{position:absolute;inset:6px;border-radius:13px;overflow:hidden;background:radial-gradient(circle at 50% 50%,#2a63d4,#0c2459)}
+.phone-screen::before,.phone-screen::after{content:"";position:absolute;background:rgba(255,255,255,.22)}
+.phone-screen::before{left:50%;top:10%;bottom:10%;width:1px}
+.phone-screen::after{top:50%;left:10%;right:10%;height:1px}
+.phone-ring{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px;border-radius:50%;border:1.5px solid rgba(255,255,255,.45)}
+.bubble{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,#7ff0c2 60%,#22c98b);box-shadow:0 0 14px #36d39a}
+.dial-svg{width:100%;max-width:190px;height:auto;margin:0 auto;display:block}
+.w-ring{fill:none;stroke:var(--dim);stroke-width:13}
+.w-spoke{stroke:var(--dim);stroke-width:10;stroke-linecap:round;fill:none}
+.w-hub{fill:var(--panel-3);stroke:var(--dim);stroke-width:4}
+.w-mark{fill:var(--accent)}
+.c-face{fill:var(--panel-2);stroke:var(--line-2);stroke-width:1.5}
+.c-tick{stroke:var(--faint);stroke-width:1.2}
+.c-tick.major{stroke:var(--dim);stroke-width:2.2}
+.c-lab{font-size:15px;font-weight:700;fill:var(--dim);text-anchor:middle;dominant-baseline:central}
+.c-lab.n{fill:var(--err)}
+.c-ptr{fill:var(--accent)}
+.c-zero{stroke:var(--blue);stroke-width:3;stroke-linecap:round}
+
+/* 波形畫布 */
+.wave-cv{display:block;width:100%;height:84px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line)}
+
+/* 麥克風 / 語音 */
+.mic-hero{display:grid;place-items:center;gap:10px;padding:8px 0}
+.mic-btn{position:relative;width:104px;height:104px;border-radius:50%;border:0;display:grid;place-items:center;background:linear-gradient(160deg,var(--accent-2),var(--accent));color:#fff;box-shadow:0 14px 30px -10px var(--accent)}
+.mic-btn .ico{width:40px;height:40px}
+.mic-btn.on::before,.mic-btn.on::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--accent);animation:ripple 1.6s ease-out infinite}
+.mic-btn.on::after{animation-delay:.8s}
+@keyframes ripple{from{transform:scale(.9);opacity:.8}to{transform:scale(1.45);opacity:0}}
+.mic-state{font-size:13px;color:var(--dim);text-align:center}
+.transcript{min-height:58px;padding:14px 16px;border-radius:16px;background:var(--panel-2);border:1px solid var(--line);font-size:17px;font-weight:500;line-height:1.5}
+.transcript .interim{color:var(--faint)}
+.transcript .placeholder{color:var(--faint);font-size:14px}
+.cmd-chips{display:flex;flex-wrap:wrap;gap:6px}
+.cmd{height:32px;padding:0 12px;border-radius:99px;border:1px dashed var(--line-2);background:transparent;font-size:13px;color:var(--dim)}
+.cmd:active{background:var(--accent-soft)}
+.history{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.history li{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:11px;background:var(--panel-2);font-size:13px}
+.history li .r{font-weight:600;color:var(--ok);white-space:nowrap}
+.history li.bad .r{color:var(--err)}
+.history li .q{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 相機 */
+.cam-box{position:relative;width:100%;aspect-ratio:4/3;border-radius:18px;overflow:hidden;background:#05070b;border:1px solid var(--line)}
+.cam-box video,.cam-box canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
+.cam-box .mirror{transform:scaleX(-1)}
+.cam-empty{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px;color:#c9d2e0;text-align:center;padding:16px;font-size:13px;background:radial-gradient(circle at 50% 40%,#1b2435,#05070b)}
+.cam-empty .ico{width:40px;height:40px;opacity:.7;margin:0 auto}
+.cam-hud{position:absolute;left:10px;right:10px;bottom:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.cam-hud span{padding:4px 10px;border-radius:99px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-family:var(--mono);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.swatch{width:34px;height:34px;border-radius:10px;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line-2);flex:none}
+
+/* 自動擺動 */
+.sweep-cv{display:block;width:100%;height:110px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line)}
+
+/* 錄製重播 */
+.rec-hero{display:grid;gap:10px;justify-items:center;text-align:center}
+.rec-big{display:inline-flex;align-items:center;gap:12px;height:60px;padding:0 26px 0 20px;border-radius:99px;border:1px solid var(--line-2);background:var(--panel-2);font-size:16px;font-weight:700}
+.rec-big .dot{width:22px;height:22px;border-radius:50%;background:var(--rec);box-shadow:0 0 0 5px var(--err-soft)}
+.rec-big.on{background:var(--rec);color:#fff;border-color:transparent}
+.rec-big.on .dot{border-radius:5px;background:#fff;box-shadow:none;width:18px;height:18px}
+.rec-big .t{font-family:var(--mono);font-weight:500;opacity:.8}
+.clips{display:grid;gap:10px}
+.clip{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border-radius:16px;border:1px solid var(--line);background:var(--panel-2)}
+.clip.playing{border-color:var(--accent);background:var(--accent-soft)}
+.clip-meta{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.clip-meta b{font-weight:700}
+.clip-meta span{color:var(--faint);font-family:var(--mono);font-size:12px}
+.clip canvas{display:block;width:100%;height:38px;margin-top:6px}
+.clip-btns{display:flex;gap:6px}
+.clip-btns .btn{width:40px;padding:0}
+.clip-btns .btn.on{background:var(--accent);color:#fff;border-color:transparent}
+.empty{padding:22px 16px;border-radius:16px;border:1.5px dashed var(--line-2);text-align:center;color:var(--faint);font-size:13px}
+
+/* ═════════════ 通訊紀錄 ═════════════ */
+.log summary{list-style:none;display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;user-select:none}
+.log summary::-webkit-details-marker{display:none}
+.log summary .t{font-weight:700;font-size:14.5px}
+.log summary .c{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--faint)}
+.log summary .chev{transition:transform .2s;color:var(--faint)}
+.log[open] summary .chev{transform:rotate(180deg)}
+.log-tools{display:flex;gap:8px;align-items:center;padding:0 18px 8px;font-size:12px;color:var(--faint)}
+.log-tools .grow{flex:1}
+#logList{list-style:none;margin:0;padding:0 10px 12px;max-height:300px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.5}
+#logList li{display:grid;grid-template-columns:auto auto minmax(0,1fr);column-gap:8px;padding:4px 8px;border-radius:8px}
+#logList li:nth-child(odd){background:var(--panel-2)}
+#logList time{color:var(--faint)}
+#logList .dir{font-weight:700}
+#logList .m{overflow-wrap:anywhere}
+#logList .d{grid-column:3;color:var(--faint);overflow-wrap:anywhere}
+#logList li.out .dir{color:var(--accent)}
+#logList li.in .dir{color:var(--blue)}
+#logList li.sys .dir{color:var(--faint)}
+#logList li.err .dir,#logList li.err .m{color:var(--err)}
+
+.foot{text-align:center;font-size:11.5px;color:var(--faint);padding:4px 16px 8px}
+.foot a{color:inherit}
+
+/* ═════════════ 底部面板（sheet） ═════════════ */
+.backdrop{position:fixed;inset:0;z-index:50;background:rgba(4,7,12,.5);opacity:0;transition:opacity .28s}
+.backdrop.show{opacity:1}
+.sheet{position:fixed;z-index:60;left:0;right:0;bottom:0;max-height:92vh;max-height:92dvh;overflow:auto;overscroll-behavior:contain;background:var(--panel);border-radius:26px 26px 0 0;padding:6px 20px 0;box-shadow:var(--shadow-lg);transform:translateY(105%);transition:transform .34s cubic-bezier(.2,.85,.25,1)}
+.sheet.show{transform:none}
+.grab{width:42px;height:5px;border-radius:9px;background:var(--line-2);margin:4px auto 10px}
+.sheet-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}
+.sheet-head h2{font-size:19px}
+.sheet-head p{font-size:13px;color:var(--dim);margin-top:2px}
+.sheet-body{display:grid;gap:16px}
+.sheet > .sheet-body:last-child{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.sheet-actions{position:sticky;bottom:0;z-index:2;display:grid;grid-template-columns:auto 1fr;gap:10px;margin:16px -20px 0;padding:12px 20px calc(14px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
+@media (min-width:720px){
+  .sheet{left:50%;right:auto;top:50%;bottom:auto;width:min(560px,92vw);max-height:88vh;border-radius:26px;opacity:0;transform:translate(-50%,-47%) scale(.98);transition:transform .3s cubic-bezier(.2,.85,.25,1),opacity .25s}
+  .sheet.show{opacity:1;transform:translate(-50%,-50%)}
+  .grab{display:none}
+  .sheet-head{padding-top:14px}
+}
+
+/* 連線面板 */
+.kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kind{display:grid;justify-items:center;gap:4px;padding:12px 6px;border-radius:16px;border:1.5px solid var(--line-2);background:var(--panel-2);text-align:center;transition:border-color .2s,background .2s}
+.kind .ico{width:26px;height:26px;color:var(--dim)}
+.kind b{font-size:13.5px}
+.kind small{font-size:11px;color:var(--faint);line-height:1.3}
+.kind[aria-checked="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.kind[aria-checked="true"] .ico{color:var(--accent)}
+.flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:12px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line);font-size:12px}
+.flow span{padding:4px 9px;border-radius:9px;background:var(--panel);border:1px solid var(--line);font-weight:600}
+.flow span.mono{font-weight:500;font-size:11px}
+.flow i{font-style:normal;color:var(--accent);font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.pill-btn{height:30px;padding:0 12px;border-radius:99px;border:1px solid var(--line-2);background:var(--panel-2);font-size:12.5px;font-weight:600;color:var(--dim)}
+.pill-btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+.topic-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.topic-table th,.topic-table td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.topic-table th{font-size:11px;color:var(--faint);font-weight:700;letter-spacing:.06em}
+.topic-table td:first-child{white-space:nowrap;color:var(--dim)}
+details.adv summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--dim);padding:4px 0}
+details.adv[open] summary{margin-bottom:10px}
+.conn-msg{font-size:13px}
+
+/* QR 分享 */
+.qr-box{display:grid;place-items:center;padding:18px;border-radius:20px;background:#fff;width:min(280px,72vw);margin:0 auto;aspect-ratio:1}
+.qr-box svg{width:100%;height:100%;display:block}
+.qr-box.loading{color:#556072;font-size:13px}
+
+/* 設定 */
+.set-sec{display:grid;gap:12px;padding:14px;border-radius:18px;background:var(--panel-2);border:1px solid var(--line)}
+.set-sec h3{font-size:13px;letter-spacing:.08em;color:var(--faint)}
+.support{display:grid;gap:4px;margin:0;padding:0;list-style:none;font-size:13px}
+.support li{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;border-bottom:1px dashed var(--line)}
+.support li:last-child{border-bottom:0}
+.support .y{color:var(--ok);font-weight:700}
+.support .n{color:var(--err);font-weight:700}
+.support code{font-size:11px}
+
+/* 吐司訊息 */
+.toast{position:fixed;z-index:80;left:50%;top:calc(12px + env(safe-area-inset-top));max-width:calc(100vw - 32px);transform:translate(-50%,-160%);padding:10px 16px;border-radius:14px;background:var(--text);color:var(--bg);font-size:13.5px;font-weight:600;box-shadow:var(--shadow-lg);transition:transform .35s cubic-bezier(.2,.9,.3,1.2);pointer-events:none}
+.toast.show{transform:translate(-50%,0)}
+.toast[data-kind="ok"]{background:var(--ok);color:#fff}
+.toast[data-kind="err"]{background:var(--err);color:#fff}
+.toast[data-kind="warn"]{background:var(--warn);color:#1a1200}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="bgfx" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-linecap="round"><path d="M4 17a8 8 0 0 1 16 0" stroke-opacity=".55" stroke-width="2.2"/><path d="M12 17l5-8" stroke-width="2.6"/><circle cx="12" cy="17" r="2.3" fill="#fff" stroke="none"/></svg></span>
+    <div><h1>伺服馬達遙控台</h1><p>PHONE → MQTT → SERVO</p></div>
+  </div>
+  <button class="status off" id="statusBtn" type="button" aria-label="連線狀態，點一下開啟連線設定"><span class="dot"></span><span class="txt" id="statusText">未連線</span><i data-icon="chevron" class="chev"></i></button>
+  <button class="icon-btn" id="settingsBtn" type="button" aria-label="設定"><i data-icon="cog"></i></button>
+</header>
+
+<div class="banner warn" id="secureBanner" hidden>
+  <i data-icon="alert"></i>
+  <div><b>目前不是 HTTPS 連線</b><br>手機的動作感測器、麥克風、相機都會被瀏覽器封鎖。請改用 <code>https://</code> 開頭的網址開啟（例如 GitHub Pages）。</div>
+</div>
+
+<main class="layout">
+  <section class="col-stage" aria-label="伺服馬達狀態">
+    <div class="card stage">
+      <div class="stage-head">
+        <div>
+          <div class="eyebrow">輸出角度</div>
+          <div class="angle" aria-live="off"><span id="angleNum">90</span><span class="deg">°</span></div>
+          <div class="sub">目標 <b id="targetNum">90°</b> · 來源 <b id="sourceText">待命</b></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="rateNum">0</b><small>則／秒</small></div>
+          <div class="stat"><b id="sentNum">0</b><small>已送出</small></div>
+        </div>
+      </div>
+      <div class="gauge-wrap">
+        <svg id="gauge" viewBox="0 12 360 232" role="img" aria-label="伺服馬達角度儀表"></svg>
+      </div>
+      <div class="flags">
+        <span class="flag board" id="boardFlag"><i data-icon="chip"></i><span>模擬伺服馬達</span></span>
+        <span class="flag lock" id="lockFlag" hidden><i data-icon="lock"></i>輸出已鎖定</span>
+        <span class="flag rec" id="recFlag" hidden>REC <span id="recTime">0.0</span> 秒</span>
+      </div>
+      <div class="spark-wrap">
+        <div class="spark-legend"><span>最近 10 秒</span><span><span><i style="background:var(--blue)"></i>目標</span>　<span><i style="background:var(--accent)"></i>伺服馬達</span></span></div>
+        <canvas id="spark" aria-hidden="true"></canvas>
+      </div>
+    </div>
+
+    <nav class="quickbar" aria-label="快捷操作">
+      <button class="qb" id="qbCenter" type="button"><i data-icon="center"></i><span>回中</span></button>
+      <button class="qb rec" id="qbRec" type="button"><i data-icon="rec"></i><span id="qbRecLabel">錄製</span></button>
+      <button class="qb lock" id="qbLock" type="button"><i data-icon="unlock"></i><span>鎖定輸出</span></button>
+      <button class="qb conn" id="qbConn" type="button"><i data-icon="link"></i><span id="qbConnLabel">連線</span></button>
+    </nav>
+  </section>
+
+  <section class="col-control" aria-label="控制方式">
+    <div class="card intro" id="intro" hidden>
+      <ol class="steps" aria-label="三步驟開始">
+        <li><b>連線</b><span>點右上角</span></li>
+        <li><b>選模式</b><span>13 種控制</span></li>
+        <li><b>動手玩</b><span>手機一動就轉</span></li>
+      </ol>
+      <button class="icon-btn" id="introClose" type="button" aria-label="關閉導覽" style="width:32px;height:32px;box-shadow:none"><i data-icon="x"></i></button>
+    </div>
+
+    <nav class="dock" id="dock" role="tablist" aria-label="控制模式"></nav>
+
+    <div class="card panel">
+      <header class="panel-head">
+        <div class="panel-ico" id="panelIco"></div>
+        <div>
+          <h2 id="panelTitle">—</h2>
+          <p id="panelDesc"></p>
+          <span class="api" id="panelApi"></span>
+        </div>
+      </header>
+      <div id="panels"></div>
+    </div>
+
+    <details class="card log" id="logCard">
+      <summary><i data-icon="list"></i><span class="t">通訊紀錄</span><span class="c" id="logCount">0 則</span><i data-icon="chevron" class="chev"></i></summary>
+      <div class="log-tools"><span class="grow">↑ 送出　↓ 收到　• 系統</span><button class="btn sm" id="logPause" type="button">暫停</button><button class="btn sm" id="logClear" type="button">清除</button></div>
+      <ol id="logList"></ol>
+    </details>
+
+    <p class="foot">手機感測器 × MQTT × 伺服馬達 教學示範 · 所有感測資料只在手機上運算，不會上傳</p>
+  </section>
+</main>
+
+<!-- ════════ 連線設定 ════════ -->
+<div class="backdrop" id="backdrop" hidden></div>
+<section class="sheet" id="connSheet" role="dialog" aria-modal="true" aria-labelledby="connTitle" hidden>
+  <div class="grab"></div>
+  <header class="sheet-head">
+    <div><h2 id="connTitle">連線到開發板</h2><p>選擇手機要透過哪一條路，把角度送到伺服馬達。</p></div>
+    <button class="icon-btn" data-close type="button" aria-label="關閉"><i data-icon="x"></i></button>
+  </header>
+  <div class="sheet-body">
+    <div class="kinds" role="radiogroup" aria-label="連線方式">
+      <button class="kind" type="button" role="radio" data-kind="webduino"><i data-icon="chip"></i><b>Webduino</b><small>雲端 Device ID<br>不用改韌體</small></button>
+      <button class="kind" type="button" role="radio" data-kind="mqtt"><i data-icon="broker"></i><b>MQTT Broker</b><small>自訂 Topic<br>ESP 範例韌體</small></button>
+      <button class="kind" type="button" role="radio" data-kind="sim"><i data-icon="monitor"></i><b>模擬</b><small>不接開發板<br>先練習操作</small></button>
+    </div>
+
+    <div class="kind-pane" data-pane="webduino">
+      <div class="sheet-body">
+        <p class="hint">和 Webduino Blockly 相同的連線方式：Webduino Smart 連上 Wi-Fi 後，網頁用 Device ID 透過 Webduino 的 MQTT Broker 傳送指令。</p>
+        <div class="flow"><span>手機網頁</span><i>→</i><span class="mono">wss://ws.webduino.io</span><i>→</i><span>Webduino Smart</span><i>→</i><span>SG90</span></div>
+        <label class="field"><span class="field-label">Device ID</span><input class="input mono" id="wdDevice" placeholder="例如 YdrMW" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+        <label class="field"><span class="field-label">伺服馬達訊號腳位</span><select class="input" id="wdPin"></select></label>
+        <label class="switch-row"><span><span class="field-label">斷線後自動重新連線</span><small>每 5 秒重試一次</small></span><input type="checkbox" class="switch" id="wdAuto"></label>
+      </div>
+    </div>
+
+    <div class="kind-pane" data-pane="mqtt">
+      <div class="sheet-body">
+        <p class="hint">網頁直接把角度 <b>publish</b> 到 MQTT Broker，開發板 <b>subscribe</b> 同一個 Topic。開發板需要燒錄附的 <code>firmware/ServoMQTT</code> 範例程式。</p>
+        <div class="flow"><span>手機網頁</span><i>→ publish →</i><span>Broker</span><i>→ subscribe →</i><span>ESP 開發板</span><i>→</i><span>SG90</span></div>
+        <div class="field">
+          <span class="field-label">Broker（WebSocket 網址）</span>
+          <input class="input mono" id="mqBroker" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="wss://broker.emqx.io:8084/mqtt">
+          <div class="chips" id="brokerChips"></div>
+        </div>
+        <div class="field">
+          <span class="field-label">Topic（要和開發板程式一致）</span>
+          <div class="input-group"><input class="input mono" id="mqTopic" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" id="mqRandom" type="button" aria-label="產生隨機 Topic"><i data-icon="dice"></i></button></div>
+        </div>
+        <table class="topic-table">
+          <thead><tr><th>方向</th><th>Topic</th><th>內容</th></tr></thead>
+          <tbody>
+            <tr><td>手機 → 板子</td><td><code data-topic=""></code></td><td>角度 0–180（純文字）</td></tr>
+            <tr><td>板子 → 手機</td><td><code data-topic="/state"></code></td><td>實際角度回報</td></tr>
+            <tr><td>板子 → 手機</td><td><code data-topic="/online"></code></td><td>1 在線／0 離線（保留訊息＋遺囑）</td></tr>
+          </tbody>
+        </table>
+        <details class="adv">
+          <summary>進階：帳號密碼、QoS、保留訊息</summary>
+          <div class="sheet-body">
+            <div class="grid2">
+              <label class="field"><span class="field-label">帳號（可空白）</span><input class="input" id="mqUser" autocomplete="off" autocapitalize="off"></label>
+              <label class="field"><span class="field-label">密碼（不會儲存）</span><input class="input" id="mqPass" type="password" autocomplete="off"></label>
+            </div>
+            <div class="field"><span class="field-label">QoS</span><div id="mqQosSlot"></div></div>
+            <label class="switch-row"><span><span class="field-label">Retain（保留最後角度）</span><small>開發板重新上線時會收到最後一次的角度</small></span><input type="checkbox" class="switch" id="mqRetain"></label>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="kind-pane" data-pane="sim">
+      <div class="notice info"><i data-icon="info"></i><div><b>不接開發板也能玩</b><p>畫面上的 SG90 會依照真實的轉速（約 0.1 秒轉 60°）模擬動作，適合先熟悉 13 種控制方式，或上課投影示範。</p></div></div>
+    </div>
+
+    <div class="conn-msg" id="connMsg" hidden></div>
+  </div>
+  <div class="sheet-actions">
+    <button class="btn" id="shareBtn" type="button"><i data-icon="qr"></i>分享</button>
+    <button class="btn primary" id="connectBtn" type="button">連線</button>
+  </div>
+</section>
+
+<!-- ════════ QR 分享 ════════ -->
+<section class="sheet" id="shareSheet" role="dialog" aria-modal="true" aria-labelledby="shareTitle" hidden>
+  <div class="grab"></div>
+  <header class="sheet-head">
+    <div><h2 id="shareTitle">用手機掃描開啟</h2><p>手機開啟後會自動套用這組連線設定（不含密碼）。</p></div>
+    <button class="icon-btn" data-close type="button" aria-label="關閉"><i data-icon="x"></i></button>
+  </header>
+  <div class="sheet-body">
+    <div class="qr-box loading" id="qrBox">產生中…</div>
+    <div class="input-group"><input class="input mono" id="shareUrl" readonly><button class="btn" id="copyUrl" type="button"><i data-icon="copy"></i>複製</button></div>
+    <div id="shareWarn"></div>
+  </div>
+</section>
+
+<!-- ════════ 設定 ════════ -->
+<section class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-labelledby="setTitle" hidden>
+  <div class="grab"></div>
+  <header class="sheet-head">
+    <div><h2 id="setTitle">設定</h2><p>輸出限制、操作體驗與瀏覽器支援檢查。</p></div>
+    <button class="icon-btn" data-close type="button" aria-label="關閉"><i data-icon="x"></i></button>
+  </header>
+  <div class="sheet-body" id="settingsBody"></div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="app.js?v=3"></script>
+</body>
+</html>
