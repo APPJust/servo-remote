@@ -30,11 +30,11 @@
 // ═══════════ 請改成你的設定 ═══════════
 const char* WIFI_SSID = "你的WiFi名稱";
 const char* WIFI_PASS = "你的WiFi密碼";
-const char* MQTT_HOST = "broker.emqx.io";        // 與網頁選的 Broker 同一台（網頁走 wss，開發板走 1883）
+const char* MQTT_HOST = "mqtt1.webduino.io";     // 與網頁選的 Broker 同一台（網頁走 wss，開發板走 1883）
 const uint16_t MQTT_PORT = 1883;
 const char* MQTT_USER = "";                       // 公開 Broker 留空白
 const char* MQTT_PASS = "";
-const char* TOPIC     = "classroom/servo/abcd";   // 要和網頁上的 Topic 一字不差
+const char* TOPIC     = "30-06";                  // 要和網頁上的 Topic 一字不差
 const int   SERVO_PIN = 5;                        // Webduino Smart 的 05 腳 = GPIO5
 // ═══════════════════════════════════════
 

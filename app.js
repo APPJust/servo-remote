@@ -16,7 +16,8 @@
   const WEBDUINO_JS = 'https://cdn.jsdelivr.net/npm/webduino-js@0.7.0/dist/webduino-all.min.js'; // 與 webduino.io 版相同 API（Paho MQTT、wss://ws.webduino.io）
   const MQTT_JS = 'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js';
   const QR_JS = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
-  const BROKERS = [
+  const BROKERS = [ // 第一個是預設
+    { name: 'Webduino', url: 'wss://mqtt1.webduino.io/mqtt' },
     { name: 'EMQX', url: 'wss://broker.emqx.io:8084/mqtt' },
     { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
     { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/mqtt' }
@@ -1626,7 +1627,8 @@
   }
 
   const DEFAULT_DEVICE = 'YdrMW'; // 預設的 Webduino Device ID
-  const defaultForm = () => ({ kind: 'sim', webduino: { device: DEFAULT_DEVICE, pin: 5, autoReconnect: true }, mqtt: { broker: BROKERS[0].url, topic: 'classroom/servo/' + randId(4), qos: 0, retain: false, user: '' } });
+  const DEFAULT_TOPIC = '30-06';  // 預設的 MQTT Topic
+  const defaultForm = () => ({ kind: 'sim', webduino: { device: DEFAULT_DEVICE, pin: 5, autoReconnect: true }, mqtt: { broker: BROKERS[0].url, topic: DEFAULT_TOPIC, qos: 0, retain: false, user: '' } });
   const connForm = (function () {
     const d = defaultForm(), s = store.get('connForm', null) || {};
     const f = { kind: s.kind || d.kind, webduino: Object.assign(d.webduino, s.webduino), mqtt: Object.assign(d.mqtt, s.mqtt) };

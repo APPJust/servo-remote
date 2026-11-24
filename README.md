@@ -23,11 +23,11 @@ MQTT 模式的 Topic 設計（可當上課範例）：
 
 | Topic | 方向 | 內容 |
 |---|---|---|
-| `classroom/servo/xxxx` | 手機 → 開發板 | 角度 `0`–`180`（純文字） |
-| `classroom/servo/xxxx/state` | 開發板 → 手機 | 實際角度回報，網頁上的伺服馬達會跟著回報值轉 |
-| `classroom/servo/xxxx/online` | 開發板 → 手機 | `1` 在線／`0` 離線（保留訊息＋遺囑 Last Will） |
+| `30-06` | 手機 → 開發板 | 角度 `0`–`180`（純文字） |
+| `30-06/state` | 開發板 → 手機 | 實際角度回報，網頁上的伺服馬達會跟著回報值轉 |
+| `30-06/online` | 開發板 → 手機 | `1` 在線／`0` 離線（保留訊息＋遺囑 Last Will） |
 
-網頁走 WebSocket（例如 `wss://broker.emqx.io:8084/mqtt`），開發板走 TCP（`broker.emqx.io:1883`），兩邊連的是同一台 Broker。
+預設 Broker 是 Webduino 的 `wss://mqtt1.webduino.io/mqtt`、預設 Topic 是 `30-06`（連線面板也可以改選 EMQX、HiveMQ、Mosquitto）。網頁走 WebSocket（`wss://mqtt1.webduino.io/mqtt`），開發板走 TCP（`mqtt1.webduino.io:1883`），兩邊連的是同一台 Broker。
 
 ## 13 種控制方式
 
@@ -67,7 +67,7 @@ python -m http.server 8766 --directory servo-remote
 
 ## 上課使用建議
 
-- **每位同學用不同的 Topic**（連線面板的骰子按鈕會隨機產生），公開 Broker 上大家才不會互相控制。
+- 預設 Topic 都是 `30-06`。**每位同學請改成自己的 Topic**（連線面板的骰子按鈕會隨機產生），開發板程式的 `TOPIC` 也要改成一樣，公開 Broker 上大家才不會互相控制。
 - 老師在電腦上設定好連線 → 按「分享」→ 學生用手機掃 QR Code，就會自動套用同樣的連線與控制模式。
 - iPhone 第一次用動作感測器要按「允許使用感測器」；如果按過「不允許」，要關閉分頁重新開啟。
 - 用傾斜、方向盤時，建議先開啟手機的「螢幕方向鎖定」。
